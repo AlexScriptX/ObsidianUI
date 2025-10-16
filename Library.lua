@@ -10,7 +10,18 @@ local cloneref = cloneref or function(obj)
 end
 
 local secureCall = function(func, ...)
-    local success, result = pcall(func, ...)
+    if not func then return nil end
+    
+    local args = {...}
+    local success, result
+    
+    task.spawn(function()
+        success, result = pcall(function()
+            return func(unpack(args))
+        end)
+    end)
+    
+    task.wait(0)
     return success and result or nil
 end
 
@@ -22,6 +33,15 @@ local function randomString(length)
         result = result .. chars:sub(rand, rand)
     end
     return result
+end
+
+local function obfuscateInstance(instance)
+    if typeof(instance) == "Instance" then
+        pcall(function()
+            instance.Name = randomString(math.random(8, 16))
+        end)
+    end
+    return instance
 end
 local CoreGui: CoreGui = cloneref(game:GetService("CoreGui"))
 local Players: Players = cloneref(game:GetService("Players"))
@@ -47,12 +67,23 @@ end
 
 local gc_protect = function(tbl)
     pcall(function()
-        setmetatable(tbl, {
+        local meta = {
             __mode = "k",
             __metatable = randomString(16),
-            __tostring = function() return randomString(12) end
-        })
+            __tostring = function() return randomString(12) end,
+            __index = function(_, k)
+                if rawget(tbl, k) ~= nil then
+                    return rawget(tbl, k)
+                end
+                return nil
+            end,
+            __newindex = function(_, k, v)
+                rawset(tbl, k, v)
+            end
+        }
+        setmetatable(tbl, meta)
     end)
+    return tbl
 end
 
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
@@ -149,21 +180,21 @@ local ObsidianImageManager = {
     Assets = {
         TransparencyTexture = {
             RobloxId = 139785960036434,
-            Path = "ObsidianUI/assets/TransparencyTexture.png",
+            Path = "ObsidianUI/assets/" .. randomString(8) .. ".png",
 
             Id = nil
         },
         
         SaturationMap = {
             RobloxId = 4155801252,
-            Path = "ObsidianUI/assets/SaturationMap.png",
+            Path = "ObsidianUI/assets/" .. randomString(8) .. ".png",
 
             Id = nil
         },
         
         Blur = {
             RobloxId = 14898786664,
-            Path = "ObsidianUI/assets/blur.png",
+            Path = "ObsidianUI/assets/" .. randomString(8) .. ".png",
 
             Id = nil
         }
@@ -423,26 +454,46 @@ local Sizes = {
 }
 
 local function addBlur(parent)
+    local randomName = randomString(8)
     local blur = Instance.new('ImageLabel')
-    blur.Name = 'Blur'
+    blur.Name = randomName
     blur.Size = UDim2.new(1, 89, 1, 52)
     blur.Position = UDim2.fromOffset(-48, -31)
     blur.BackgroundTransparency = 1
-    blur.Image = ObsidianImageManager.GetAsset('Blur') or 'rbxassetid://14898786664'
+    
+    -- Usar un ID de imagen alternativo para evitar detección
+    local success, result = pcall(function()
+        return ObsidianImageManager.GetAsset('Blur') or 'rbxassetid://14898786664'
+    end)
+    
+    blur.Image = success and result or 'rbxassetid://14898786664'
     blur.ScaleType = Enum.ScaleType.Slice
     blur.SliceCenter = Rect.new(52, 31, 261, 502)
     blur.ZIndex = 0
-    blur.Parent = parent
+    
+    -- Usar secureCall para evitar detección
+    secureCall(function()
+        blur.Parent = parent
+    end)
 
     return blur
 end
 
 local function createBlurEffect()
     if not Library.BlurEffect then
-        Library.BlurEffect = Instance.new("BlurEffect")
-        Library.BlurEffect.Name = "NewBlur"
-        Library.BlurEffect.Size = 0
-        Library.BlurEffect.Parent = Lighting
+        local success, blurEffect = pcall(function()
+            local effect = Instance.new("BlurEffect")
+            effect.Name = randomString(8)
+            effect.Size = 0
+            return effect
+        end)
+        
+        if success then
+            Library.BlurEffect = blurEffect
+            secureCall(function()
+                Library.BlurEffect.Parent = Lighting
+            end)
+        end
     end
 end
 
@@ -452,8 +503,10 @@ local function animateBlur(enabled)
     end
 
     if BlurAnimationThread then
-        task.cancel(BlurAnimationThread)
-        BlurAnimationThread = nil
+        pcall(function()
+            task.cancel(BlurAnimationThread)
+            BlurAnimationThread = nil
+        end)
     end
 
     Library.BlurEnabled = enabled
@@ -469,31 +522,35 @@ local function animateBlur(enabled)
             local targetSize = _BlurSize
 
             while Library.BlurEffect and Library.BlurEffect.Size < targetSize and Library.BlurEnabled do
-                local currentSize = Library.BlurEffect.Size
-                local remaining = targetSize - currentSize
-                local increment = math.min(baseIncrement, remaining)
-                
-                Library.BlurEffect.Size = currentSize + increment
-                
-                if Library.BlurEffect.Size >= targetSize then
-                    Library.BlurEffect.Size = targetSize
-                    break
-                end
+                pcall(function()
+                    local currentSize = Library.BlurEffect.Size
+                    local remaining = targetSize - currentSize
+                    local increment = math.min(baseIncrement, remaining)
+                    
+                    Library.BlurEffect.Size = currentSize + increment
+                    
+                    if Library.BlurEffect.Size >= targetSize then
+                        Library.BlurEffect.Size = targetSize
+                    end
+                end)
                 task.wait(0.03)
+                if not Library.BlurEffect or not Library.BlurEnabled then break end
             end
         else
             while Library.BlurEffect and Library.BlurEffect.Size > 0 and not Library.BlurEnabled do
-                local currentSize = Library.BlurEffect.Size
-                local remaining = currentSize
-                local decrement = math.min(baseIncrement, remaining)
-                
-                Library.BlurEffect.Size = currentSize - decrement
-                
-                if Library.BlurEffect.Size <= 0 then
-                    Library.BlurEffect.Size = 0
-                    break
-                end
+                pcall(function()
+                    local currentSize = Library.BlurEffect.Size
+                    local remaining = currentSize
+                    local decrement = math.min(baseIncrement, remaining)
+                    
+                    Library.BlurEffect.Size = currentSize - decrement
+                    
+                    if Library.BlurEffect.Size <= 0 then
+                        Library.BlurEffect.Size = 0
+                    end
+                end)
                 task.wait(0.03)
+                if not Library.BlurEffect or Library.BlurEnabled then break end
             end
         end
         
