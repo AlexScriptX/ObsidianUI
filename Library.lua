@@ -57,12 +57,14 @@ local function RandomCharacters(Length)
     end
 end
 
-local ImageManager = {
+local AssetManager = {
     PreloadAssets = {
         "TransparencyTexture",
         "SaturationMap",
         "blur",
-        "Icon"
+        "Icon",
+        "Normal",
+        "Error"
     },
     Cache = {}
 }
@@ -76,7 +78,7 @@ do
     end)
 
     if Success and type(Data) == "table" then
-        ImageManager.Cache = Data
+        AssetManager.Cache = Data
     end
 
     local function RecursiveCreatePath(Path: string, IsFile: boolean?)
@@ -102,12 +104,12 @@ do
         return TraversedPath
     end
 
-    function ImageManager.GetAsset(AssetName: string)
-        if not ImageManager.Cache[AssetName] then
+    function AssetManager.GetAsset(AssetName: string)
+        if not AssetManager.Cache[AssetName] then
             return nil
         end
 
-        local AssetData = ImageManager.Cache[AssetName]
+        local AssetData = AssetManager.Cache[AssetName]
         if AssetData.Id then
             return AssetData.Id
         end
@@ -125,46 +127,48 @@ do
         AssetData.Id = AssetID
 
         RecursiveCreatePath(ConfigPath, true)
-        writefile(ConfigPath, game:GetService("HttpService"):JSONEncode(ImageManager.Cache))
+        writefile(ConfigPath, game:GetService("HttpService"):JSONEncode(AssetManager.Cache))
 
         return AssetID
     end
 
-    function ImageManager.DownloadAsset(AssetName: string)
+    function AssetManager.DownloadAsset(AssetName: string)
         if not getcustomasset or not writefile or not isfile then
             return
         end
 
-        if ImageManager.Cache[AssetName] and isfile(ImageManager.Cache[AssetName].Path) then
+        if AssetManager.Cache[AssetName] and isfile(AssetManager.Cache[AssetName].Path) then
             return
         end
 
         local RandomizedFileName = RandomCharacters(RNG:NextInteger(16, 32)) .. ".asset"
         local FilePath = AssetsPath .. RandomizedFileName
-        local AssetPath = AssetName .. ".png"
+        local AssetPath = AssetName .. ((AssetName == "Normal" or AssetName == "Error") and ".ogg" or ".png")
 
         RecursiveCreatePath(FilePath, true)
         writefile(FilePath, game:HttpGet(BaseURL .. AssetPath))
 
-        ImageManager.Cache[AssetName] = {
+        AssetManager.Cache[AssetName] = {
             Path = FilePath,
             Id = nil
         }
 
         RecursiveCreatePath(ConfigPath, true)
-        writefile(ConfigPath, game:GetService("HttpService"):JSONEncode(ImageManager.Cache))
+        writefile(ConfigPath, game:GetService("HttpService"):JSONEncode(AssetManager.Cache))
     end
 
-    for _, AssetName in ImageManager.PreloadAssets do
-        ImageManager.DownloadAsset(AssetName)
+    for _, AssetName in AssetManager.PreloadAssets do
+        AssetManager.DownloadAsset(AssetName)
     end
 end
 
-local TextureOverrides = {
-    ["rbxassetid://139785960036434"] = ImageManager.GetAsset("TransparencyTexture"),
-    ["rbxassetid://4155801252"] = ImageManager.GetAsset("SaturationMap"),
-    ["rbxassetid://14898786664"] = ImageManager.GetAsset("blur"),
-    ["rbxassetid://85895852329707"] = ImageManager.GetAsset("Icon")
+local AssetOverrides = {
+    ["rbxassetid://139785960036434"] = AssetManager.GetAsset("TransparencyTexture"),
+    ["rbxassetid://4155801252"] = AssetManager.GetAsset("SaturationMap"),
+    ["rbxassetid://14898786664"] = AssetManager.GetAsset("blur"),
+    ["rbxassetid://85895852329707"] = AssetManager.GetAsset("Icon"),
+    ["rbxassetid://18886652611"] = AssetManager.GetAsset("Normal"),
+    ["rbxassetid://87519554692663"] = AssetManager.GetAsset("Error")
 }
 
 local CoreGui: CoreGui = cloneref(game:GetService("CoreGui"))
@@ -263,7 +267,7 @@ local Library = {
     Toggles = Toggles,
     Options = Options,
     
-    ImageManager = ImageManager,
+    AssetManager = AssetManager,
 
     NotifySide = "Right",
     ForceCheckbox = false,
@@ -496,7 +500,7 @@ local function addBlur(parent)
     blur.Position = UDim2.fromOffset(-48, -31)
     blur.BackgroundTransparency = 1
     
-    blur.Image = ImageManager.GetAsset("blur")
+    blur.Image = AssetManager.GetAsset("blur")
     blur.ScaleType = Enum.ScaleType.Slice
     blur.SliceCenter = Rect.new(52, 31, 261, 502)
     blur.ZIndex = 0
@@ -2559,7 +2563,7 @@ do
         })
 
         local HolderTransparency = New("ImageLabel", {
-            Image = ImageManager.GetAsset("TransparencyTexture"),
+            Image = AssetManager.GetAsset("TransparencyTexture"),
             ImageTransparency = (1 - ColorPicker.Transparency),
             ScaleType = Enum.ScaleType.Tile,
             Size = UDim2.fromScale(1, 1),
@@ -2612,7 +2616,7 @@ do
         --// Sat Map
         local SatVipMap = New("ImageButton", {
             BackgroundColor3 = ColorPicker.Value,
-            Image = ImageManager.GetAsset("SaturationMap"),
+            Image = AssetManager.GetAsset("SaturationMap"),
             Size = UDim2.fromOffset(200, 200),
             Parent = ColorHolder,
         })
@@ -2658,7 +2662,7 @@ do
         local TransparencySelector, TransparencyColor, TransparencyCursor
         if Info.Transparency then
             TransparencySelector = New("ImageButton", {
-                Image = ImageManager.GetAsset("TransparencyTexture"),
+                Image = AssetManager.GetAsset("TransparencyTexture"),
                 ScaleType = Enum.ScaleType.Tile,
                 Size = UDim2.fromOffset(16, 200),
                 TileSize = UDim2.fromOffset(8, 8),
