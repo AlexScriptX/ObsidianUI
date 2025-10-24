@@ -1,4 +1,4 @@
-local ThreadFix = setthreadidentity and true or false
+local ThreadFix = setthreadidentity and true or false -- es
 if ThreadFix then
     local success = pcall(function() 
         setthreadidentity(8) 
@@ -6212,6 +6212,9 @@ function Library:CreateWindow(WindowInfo)
             Parent = Container,
         })
 
+        -- Initialize sidebar layout now that Tabs and Container exist
+        ApplySidebarLayout()
+
         -- Sidebar resize functionality
         if WindowInfo.EnableSidebarResize then
             local SidebarDrag = {
@@ -7252,9 +7255,6 @@ function Library:CreateWindow(WindowInfo)
     SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
         Library:UpdateSearch(SearchBox.Text)
     end)
-
-    -- Initialize sidebar layout
-    ApplySidebarLayout()
 
     Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
         if not Library.IsRobloxFocused then
