@@ -1,5 +1,4 @@
--- TEST
-local ThreadFix = setthreadidentity and true or false
+local ThreadFix = setthreadidentity and true or false -- test
 if ThreadFix then
     local success = pcall(function() 
         setthreadidentity(8) 
@@ -385,6 +384,12 @@ local Templates = {
         ToggleKeybind = Enum.KeyCode.RightControl,
         MobileButtonsSide = "Left",
         UnlockMouseWhileOpen = true,
+        Compact = false,
+        EnableSidebarResize = false,
+        SidebarMinWidth = 180,
+        SidebarCompactWidth = 54,
+        SidebarCollapseThreshold = 0.5,
+        SidebarHighlightCallback = nil,
         ShowBlur = true,
         BlurSize = 13,
         ShowMobileLockButton = true
@@ -449,9 +454,6 @@ local Templates = {
         Camera = nil,
         Clone = true,
         AutoFocus = true,
-        Interactive = false,
-        Height = 200,
-        Visible = true,
     },
     Image = {
         Image = "",
@@ -463,10 +465,19 @@ local Templates = {
         Height = 200,
         Visible = true,
     },
+    Video = {
+        Video = "",
+        Looped = false,
+        Playing = false,
+        Volume = 1,
+        Height = 200,
+        Visible = true,
+    },
 
     KeyPicker = {
         Text = "KeyPicker",
         Default = "None",
+        DefaultModifiers = {},
         Mode = "Toggle",
         Modes = { "Always", "Toggle", "Hold" },
         SyncToggleState = false,
@@ -798,6 +809,10 @@ local function GetTeams()
     end)
 
     return TeamList
+end
+local function GetLighterColor(Color)
+    local H, S, V = Color:ToHSV()
+    return Color3.fromHSV(H, math.max(0, S - 0.1), math.min(1, V + 0.1))
 end
 
 function Library:UpdateKeybindFrame()
@@ -2132,7 +2147,11 @@ do
 
         local KeyPicker = {
             Text = Info.Text,
-            Value = Info.Default,
+
+            Value = Info.Default, -- Key
+            Modifiers = Info.DefaultModifiers, -- Modifiers
+            DisplayValue = Info.Default, -- Picker Text
+
             Toggled = false,
             Mode = Info.Mode,
             SyncToggleState = Info.SyncToggleState,
@@ -2169,6 +2188,117 @@ do
             [Enum.UserInputType.MouseButton2] = "MB2",
             [Enum.UserInputType.MouseButton3] = "MB3"
         }
+
+        -- Modifiers
+        local Modifiers = {
+            ["LAlt"] = Enum.KeyCode.LeftAlt,
+            ["RAlt"] = Enum.KeyCode.RightAlt,
+
+            ["LCtrl"] = Enum.KeyCode.LeftControl,
+            ["RCtrl"] = Enum.KeyCode.RightControl,
+
+            ["LShift"] = Enum.KeyCode.LeftShift,
+            ["RShift"] = Enum.KeyCode.RightShift,
+
+            ["CapsLock"] = Enum.KeyCode.CapsLock,
+        }
+
+        local ModifiersInput = {
+            [Enum.KeyCode.LeftAlt] = "LAlt",
+            [Enum.KeyCode.RightAlt] = "RAlt",
+
+            [Enum.KeyCode.LeftControl] = "LCtrl",
+            [Enum.KeyCode.RightControl] = "RCtrl",
+
+            [Enum.KeyCode.LeftShift] = "LShift",
+            [Enum.KeyCode.RightShift] = "RShift",
+
+            [Enum.KeyCode.CapsLock] = "CapsLock",
+        }
+
+        local IsModifierInput = function(Input)
+            return Input.UserInputType == Enum.UserInputType.Keyboard and ModifiersInput[Input.KeyCode] ~= nil
+        end
+
+        local GetActiveModifiers = function()
+            local ActiveModifiers = {}
+
+            for Name, Input in Modifiers do
+                if table.find(ActiveModifiers, Name) then
+                    continue
+                end
+                if not UserInputService:IsKeyDown(Input) then
+                    continue
+                end
+
+                table.insert(ActiveModifiers, Name)
+            end
+
+            return ActiveModifiers
+        end
+
+        local AreModifiersHeld = function(Required)
+            if not (typeof(Required) == "table" and GetTableSize(Required) > 0) then
+                return true
+            end
+
+            local ActiveModifiers = GetActiveModifiers()
+            local Holding = true
+
+            for _, Name in Required do
+                if table.find(ActiveModifiers, Name) then
+                    continue
+                end
+
+                Holding = false
+                break
+            end
+
+            if not Holding then
+                return false
+            end
+
+            for _, Name in ActiveModifiers do
+                if table.find(Required, Name) then
+                    continue
+                end
+
+                Holding = false
+                break
+            end
+
+            return Holding
+        end
+
+        local ConvertToInputModifiers = function(CurrentModifiers)
+            local InputModifiers = {}
+
+            for _, name in CurrentModifiers do
+                table.insert(InputModifiers, Modifiers[name])
+            end
+
+            return InputModifiers
+        end
+
+        local VerifyModifiers = function(CurrentModifiers)
+            if typeof(CurrentModifiers) ~= "table" then
+                return {}
+            end
+
+            local ValidModifiers = {}
+
+            for _, name in CurrentModifiers do
+                if not Modifiers[name] then
+                    continue
+                end
+
+                table.insert(ValidModifiers, name)
+            end
+
+            return ValidModifiers
+        end
+
+        KeyPicker.Modifiers = VerifyModifiers(KeyPicker.Modifiers) -- Verify default modifiers
 
         local Picker = New("TextButton", {
             BackgroundColor3 = "MainColor",
@@ -2317,16 +2447,10 @@ do
             ModeButtons[Mode] = ModeButton
         end
 
-        function KeyPicker:Display()
-            if Library.Unloaded then
-                return
-            end
-
-            local X, Y =
-                Library:GetTextBounds(KeyPicker.Value, Picker.FontFace, Picker.TextSize, ToggleLabel.AbsoluteSize.X)
-            Picker.Text = KeyPicker.Value
-            Picker.Size = UDim2.fromOffset(X + 9 * Library.DPIScale, Y + 4 * Library.DPIScale)
-        end
+        -- Initialize DisplayValue
+        KeyPicker.DisplayValue = if GetTableSize(KeyPicker.Modifiers) > 0
+            then (table.concat(KeyPicker.Modifiers, " + ") .. " + " .. KeyPicker.Value)
+            else KeyPicker.Value
 
         function KeyPicker:Update()
             KeyPicker:Display()
@@ -2350,17 +2474,8 @@ do
                     KeybindsToggle:SetNormal(true)
                 end
 
-                local showToggle = KeyPicker.Value ~= "None" and KeyPicker.Value ~= ""
-                if not showToggle then
-                    KeybindsToggle:SetVisibility(false)
-                else
-                    KeybindsToggle:SetVisibility(true)
-                    local modeStr = string.format(" (%s)", KeyPicker.Mode:sub(1, 1):upper())
-                    local text = KeybindsToggle.Normal and
-                        string.format("[%s] - %s%s", KeyPicker.Value, KeyPicker.Text, modeStr) or
-                        string.format("[%s] %s%s", KeyPicker.Value, KeyPicker.Text, modeStr)
-                    KeybindsToggle:SetText(text)
-                end
+                KeybindsToggle:SetText(("[%s] %s (%s)"):format(KeyPicker.DisplayValue, KeyPicker.Text, KeyPicker.Mode))
+                KeybindsToggle:SetVisibility(true)
 
                 KeybindsToggle:Display(State)
             end
@@ -2374,6 +2489,10 @@ do
             elseif KeyPicker.Mode == "Hold" then
                 local Key = KeyPicker.Value
                 if Key == "None" then
+                    return false
+                end
+
+                if not AreModifiersHeld(KeyPicker.Modifiers) then
                     return false
                 end
 
@@ -2417,12 +2536,39 @@ do
         end
 
         function KeyPicker:SetValue(Data)
-            local Key, Mode = Data[1], Data[2]
+            local Key, Mode, Modifiers = Data[1], Data[2], Data[3]
 
-            KeyPicker.Value = Key
+            local IsKeyValid, UserInputType = pcall(function()
+                if Key == "None" then
+                    return Enum.UserInputType.None
+                end
+
+                if SpecialKeys[Key] then
+                    return SpecialKeys[Key]
+                end
+
+                return Enum.UserInputType.Keyboard
+            end)
+
+            if IsKeyValid then
+                KeyPicker.Value = Key
+            else
+                KeyPicker.Value = "Unknown"
+            end
+
+            KeyPicker.Modifiers =
+                VerifyModifiers(if typeof(Modifiers) == "table" then Modifiers else KeyPicker.Modifiers)
+            KeyPicker.DisplayValue = if GetTableSize(KeyPicker.Modifiers) > 0
+                then (table.concat(KeyPicker.Modifiers, " + ") .. " + " .. KeyPicker.Value)
+                else KeyPicker.Value
+
             if ModeButtons[Mode] then
                 ModeButtons[Mode]:Select()
             end
+
+            local NewModifiers = ConvertToInputModifiers(KeyPicker.Modifiers)
+            Library:SafeCallback(KeyPicker.ChangedCallback, UserInputType, NewModifiers)
+            Library:SafeCallback(KeyPicker.Changed, UserInputType, NewModifiers)
 
             KeyPicker:Update()
         end
@@ -2433,40 +2579,94 @@ do
         end
 
         local Picking = false
-        Picker.MouseButton1Click:Connect(function()
+        function KeyPicker:Display(Text)
+            Picker.Text = Text or KeyPicker.DisplayValue
+            local X, Y = Library:GetTextBounds(Picker.Text, Picker.FontFace, Picker.TextSize)
+            Picker.Size = UDim2.fromOffset(X + 9 * Library.DPIScale, Y + 4 * Library.DPIScale)
+        end
+
+        function KeyPicker:DoClick()
             if Picking then
                 return
             end
 
             Picking = true
 
-            Picker.Text = "..."
-            Picker.Size = UDim2.fromOffset(29 * Library.DPIScale, 18 * Library.DPIScale)
+            KeyPicker:Display("...")
 
-            local Input = UserInputService.InputBegan:Wait()
+            -- Wait for an non modifier key --
+            local Input
+            local ActiveModifiers = {}
+
+            local GetInput = function()
+                Input = UserInputService.InputBegan:Wait()
+
+                if Input.UserInputType == Enum.UserInputType.Focus then
+                    GetInput()
+                    return
+                end
+
+                if Input.UserInputType == Enum.UserInputType.Keyboard then
+                    if IsModifierInput(Input) then
+                        if Input.KeyCode == Enum.KeyCode.Escape then
+                            -- Escape key pressed, cancel --
+                            return
+                        end
+
+                        repeat
+                            if UserInputService:IsKeyDown(Input.KeyCode) then
+                                -- Add modifier to the key list --
+                                if not table.find(ActiveModifiers, ModifiersInput[Input.KeyCode]) then
+                                    ActiveModifiers[#ActiveModifiers + 1] = ModifiersInput[Input.KeyCode]
+                                    KeyPicker:Display(table.concat(ActiveModifiers, " + ") .. " + ...")
+                                end
+
+                                -- Wait for another input --
+                                GetInput()
+
+                                if Input.KeyCode == Enum.KeyCode.Escape then
+                                    -- Escape key pressed, cancel --
+                                    return
+                                end
+
+                                if not IsModifierInput(Input) then
+                                    break
+                                end
+                            else
+                                if not table.find(ActiveModifiers, ModifiersInput[Input.KeyCode]) then
+                                    break -- Modifier is meant to be used as a normal key --
+                                end
+                            end
+                        until false
+                    end
+                end
+            end
+
+            GetInput()
+
             local Key = "Unknown"
 
             if SpecialKeysInput[Input.UserInputType] ~= nil then
-                Key = SpecialKeysInput[Input.UserInputType];
-
+                Key = SpecialKeysInput[Input.UserInputType]
             elseif Input.UserInputType == Enum.UserInputType.Keyboard then
-                Key = Input.KeyCode == Enum.KeyCode.Escape and "None" or Input.KeyCode.Name
+                Key = Input.KeyCode == Enum.KeyCode.Escape and "None" or Input.KeyCode.Name;
             end
 
-            KeyPicker.Value = Key
-            KeyPicker:Update()
+            ActiveModifiers = if Input.KeyCode == Enum.KeyCode.Escape or Key == "Unknown" then {} else ActiveModifiers;
 
-            Library:SafeCallback(
-                KeyPicker.ChangedCallback,
-                Input.KeyCode == Enum.KeyCode.Unknown and Input.UserInputType or Input.KeyCode
-            )
-            Library:SafeCallback(
-                KeyPicker.Changed,
-                Input.KeyCode == Enum.KeyCode.Unknown and Input.UserInputType or Input.KeyCode
-            )
+            KeyPicker.Toggled = false
+            KeyPicker:SetValue({ Key, KeyPicker.Mode, ActiveModifiers })
 
-            RunService.RenderStepped:Wait()
+            -- RunService.RenderStepped:Wait()
+            repeat
+                RunService.RenderStepped:Wait()
+            until not UserInputService:IsKeyDown(Enum.KeyCode.Escape)
+
             Picking = false
+        end
+
+        Picker.MouseButton1Click:Connect(function()
+            KeyPicker:DoClick()
         end)
         Picker.MouseButton2Click:Connect(MenuTable.Toggle)
 
@@ -2482,13 +2682,16 @@ do
             end
 
             local Key = KeyPicker.Value
+            local HoldingModifiers = AreModifiersHeld(KeyPicker.Modifiers)
             local HoldingKey = false
 
-            if 
-                Key and (
-                    SpecialKeysInput[Input.UserInputType] == Key or 
-                    (Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Key)
-                ) 
+            if
+                Key
+                and HoldingModifiers == true
+                and (
+                    SpecialKeysInput[Input.UserInputType] == Key
+                    or (Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Key)
+                )
             then
                 HoldingKey = true
             end
@@ -4088,16 +4291,16 @@ do
 
         function Slider:SetMax(Value)
             assert(Value > Slider.Min, "Max value cannot be less than the current min value.")
-
-            Slider.Value = math.clamp(Slider.Value, Slider.Min, Value)
+    
+            Slider:SetValue(math.clamp(Slider.Value, Slider.Min, Value)) --this will make  so it updates. and im calling this so i dont need to add an if :P
             Slider.Max = Value
             Slider:Display()
         end
 
         function Slider:SetMin(Value)
             assert(Value < Slider.Max, "Min value cannot be greater than the current max value.")
-
-            Slider.Value = math.clamp(Slider.Value, Value, Slider.Max)
+    
+            Slider:SetValue(math.clamp(Slider.Value, Value, Slider.Max)) --same here. adding these comments for the funny
             Slider.Min = Value
             Slider:Display()
         end
@@ -5056,6 +5259,119 @@ do
         return Image
     end
 
+    function Funcs:AddVideo(Idx, Info)
+        Info = Library:Validate(Info, Templates.Video)
+
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        local Video = {
+            Video = Info.Video,
+            Looped = Info.Looped,
+            Playing = Info.Playing,
+            Volume = Info.Volume,
+            Height = Info.Height,
+            Visible = Info.Visible,
+
+            Type = "Video",
+        }
+
+        local Holder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, Info.Height),
+            Visible = Video.Visible,
+            Parent = Container,
+        })
+
+        local Box = New("Frame", {
+            BackgroundColor3 = "MainColor",
+            BorderColor3 = "OutlineColor",
+            Size = UDim2.fromScale(1, 1),
+            Parent = Holder,
+        })
+
+        New("UIPadding", {
+            PaddingLeft = UDim.new(0, 8),
+            PaddingRight = UDim.new(0, 8),
+            PaddingTop = UDim.new(0, 4),
+            Parent = Box,
+        })
+
+        local VideoFrameInstance = New("VideoFrame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Video = Video.Video,
+            Looped = Video.Looped,
+            Volume = Video.Volume,
+            Parent = Box,
+        })
+
+        VideoFrameInstance.Playing = Video.Playing
+
+        function Video:SetHeight(Height: number)
+            assert(Height > 0, "Height must be greater than 0.")
+
+            Video.Height = Height
+            Holder.Size = UDim2.new(1, 0, 0, Height)
+            Groupbox:Resize()
+        end
+
+        function Video:SetVideo(NewVideo: string)
+            assert(typeof(NewVideo) == "string", "Video must be a string.")
+
+            VideoFrameInstance.Video = NewVideo
+            Video.Video = NewVideo
+        end
+
+        function Video:SetLooped(Looped: boolean)
+            assert(typeof(Looped) == "boolean", "Looped must be a boolean.")
+
+            VideoFrameInstance.Looped = Looped
+            Video.Looped = Looped
+        end
+
+        function Video:SetVolume(Volume: number)
+            assert(typeof(Volume) == "number", "Volume must be a number between 0 and 10.")
+
+            VideoFrameInstance.Volume = Volume
+            Video.Volume = Volume
+        end
+
+        function Video:SetPlaying(Playing: boolean)
+            assert(typeof(Playing) == "boolean", "Playing must be a boolean.")
+
+            VideoFrameInstance.Playing = Playing
+            Video.Playing = Playing
+        end
+
+        function Video:Play()
+            VideoFrameInstance.Playing = true
+            Video.Playing = true
+        end
+
+        function Video:Pause()
+            VideoFrameInstance.Playing = false
+            Video.Playing = false
+        end
+
+        function Video:SetVisible(Visible: boolean)
+            Video.Visible = Visible
+
+            Holder.Visible = Video.Visible
+            Groupbox:Resize()
+        end
+
+        Groupbox:Resize()
+
+        Video.Holder = Holder
+        Video.VideoFrame = VideoFrameInstance
+        table.insert(Groupbox.Elements, Video)
+
+        Options[Idx] = Video
+
+        return Video
+    end
+
     function Funcs:AddDependencyBox()
         local Groupbox = self
         local Container = Groupbox.Container
@@ -5941,10 +6257,301 @@ function Library:CreateWindow(WindowInfo)
             PaddingTop = UDim.new(0, 0),
             Parent = Container,
         })
+
+        --// Sidebar Resize Functionality \\--
+        local SidebarHighlightCallback = WindowInfo.SidebarHighlightCallback
+
+        local LayoutState = {
+            IsCompact = WindowInfo.Compact,
+            MinWidth = WindowInfo.SidebarMinWidth,
+            CompactWidth = WindowInfo.SidebarCompactWidth,
+            MinContentWidth = WindowInfo.MinContentWidth or 260,
+            CollapseThreshold = WindowInfo.SidebarCollapseThreshold,
+            CurrentWidth = nil,
+            LastExpandedWidth = nil,
+            MaxWidth = nil,
+            GrabberHighlighted = false,
+        }
+
+        if LayoutState.MinWidth <= LayoutState.CompactWidth then
+            LayoutState.MinWidth = LayoutState.CompactWidth + 32
+        end
+
+        if LayoutState.CollapseThreshold <= 0 then
+            LayoutState.CollapseThreshold = 0.5
+        elseif LayoutState.CollapseThreshold >= 1 then
+            LayoutState.CollapseThreshold = 0.9
+        end
+
+        local InitialFrameWidth = math.max(WindowInfo.Size.X.Offset, LayoutState.MinWidth + LayoutState.MinContentWidth)
+        local InitialExpandedWidth = WindowInfo.InitialSidebarWidth
+            or math.floor(InitialFrameWidth * (WindowInfo.InitialSidebarScale or 0.3))
+        LayoutState.CurrentWidth = math.max(LayoutState.MinWidth, InitialExpandedWidth)
+        LayoutState.LastExpandedWidth = LayoutState.CurrentWidth
+
+        local LayoutRefs = {
+            DividerLine = nil,
+            TitleHolder = nil,
+            WindowIcon = nil,
+            WindowTitle = nil,
+            RightWrapper = nil,
+            TabsFrame = Tabs,
+            ContainerFrame = Container,
+            SidebarGrabber = nil,
+            TabPadding = {},
+            TabLabels = {},
+        }
+
+        local SidebarDrag = {
+            Active = false,
+            StartWidth = 0,
+            StartX = 0,
+            TouchId = nil,
+        }
+
+        local function GetSidebarWidth()
+            return LayoutState.IsCompact and LayoutState.CompactWidth or LayoutState.CurrentWidth
+        end
+
+        local function EnsureSidebarBounds()
+            local Width = MainFrame and MainFrame.AbsoluteSize.X or WindowInfo.Size.X.Offset
+            if Width <= 0 then
+                return
+            end
+
+            local MaxSidebar = Width - LayoutState.MinContentWidth
+            LayoutState.MaxWidth = math.max(LayoutState.MinWidth, MaxSidebar)
+
+            LayoutState.CurrentWidth = math.clamp(LayoutState.CurrentWidth, LayoutState.MinWidth, LayoutState.MaxWidth)
+            LayoutState.LastExpandedWidth = math.clamp(
+                LayoutState.LastExpandedWidth or LayoutState.CurrentWidth,
+                LayoutState.MinWidth,
+                LayoutState.MaxWidth
+            )
+        end
+
+        local function SetSidebarHighlight(IsActive)
+            local DividerLine = LayoutRefs.DividerLine
+            if not DividerLine then
+                return
+            end
+
+            LayoutState.GrabberHighlighted = IsActive == true
+
+            if typeof(SidebarHighlightCallback) == "function" then
+                Library:SafeCallback(SidebarHighlightCallback, DividerLine, LayoutState.GrabberHighlighted)
+            else
+                local TargetColor = LayoutState.GrabberHighlighted and GetLighterColor(Library.Scheme.OutlineColor)
+                    or Library.Scheme.OutlineColor
+
+                TweenService:Create(DividerLine, Library.TweenInfo, {
+                    BackgroundColor3 = TargetColor,
+                }):Play()
+            end
+        end
+
+        local function ApplySidebarLayout()
+            EnsureSidebarBounds()
+
+            local SidebarWidth = GetSidebarWidth()
+            local IsCompact = LayoutState.IsCompact
+
+            if LayoutRefs.DividerLine then
+                LayoutRefs.DividerLine.Position = UDim2.new(0, SidebarWidth, 0, 0)
+            end
+
+            if LayoutRefs.TabsFrame then
+                LayoutRefs.TabsFrame.Size = UDim2.new(0, SidebarWidth, 1, -70)
+            end
+
+            if LayoutRefs.ContainerFrame then
+                LayoutRefs.ContainerFrame.Position = UDim2.fromOffset(SidebarWidth, 49)
+                LayoutRefs.ContainerFrame.Size = UDim2.new(1, -SidebarWidth, 1, -70)
+            end
+
+            if LayoutRefs.SidebarGrabber then
+                LayoutRefs.SidebarGrabber.Position =
+                    UDim2.fromOffset(SidebarWidth - LayoutRefs.SidebarGrabber.Size.X.Offset / 2, 49)
+            end
+
+            SetSidebarHighlight(LayoutState.GrabberHighlighted)
+
+            WindowInfo.Compact = LayoutState.IsCompact
+
+            for _, TabObject in pairs(Library.Tabs) do
+                if TabObject.RefreshSides then
+                    TabObject:RefreshSides()
+                end
+            end
+        end
+
+        local function SetSidebarWidth(Width)
+            EnsureSidebarBounds()
+
+            Width = Width or LayoutState.CurrentWidth
+
+            local Threshold = LayoutState.MinWidth * LayoutState.CollapseThreshold
+            local WasCompact = LayoutState.IsCompact
+
+            if Width <= Threshold then
+                if not WasCompact then
+                    LayoutState.LastExpandedWidth = LayoutState.CurrentWidth
+                end
+                LayoutState.IsCompact = true
+            else
+                local TargetWidth = Width
+                if WasCompact then
+                    TargetWidth = math.max(Width, LayoutState.MinWidth)
+                end
+
+                LayoutState.CurrentWidth = math.clamp(TargetWidth, LayoutState.MinWidth, LayoutState.MaxWidth)
+                LayoutState.LastExpandedWidth = LayoutState.CurrentWidth
+                LayoutState.IsCompact = false
+            end
+
+            ApplySidebarLayout()
+        end
+
+        -- Create divider line
+        local InitialSidebarWidth = GetSidebarWidth()
+        LayoutRefs.DividerLine = Library:MakeLine(MainFrame, {
+            Position = UDim2.new(0, InitialSidebarWidth, 0, 0),
+            Size = UDim2.new(0, 1, 1, -21),
+            ZIndex = 2,
+        })
+
+        if WindowInfo.EnableSidebarResize then
+            local SidebarGrabber = New("TextButton", {
+                AutoButtonColor = false,
+                BackgroundTransparency = 1,
+                Text = "",
+                Size = UDim2.new(0, 12, 1, -70),
+                Position = UDim2.fromOffset(InitialSidebarWidth - 6, 49),
+                ZIndex = 5,
+                Parent = MainFrame,
+            })
+            LayoutRefs.SidebarGrabber = SidebarGrabber
+
+            SidebarGrabber.MouseEnter:Connect(function()
+                if Library.Toggled then
+                    SetSidebarHighlight(true)
+                end
+            end)
+            SidebarGrabber.MouseLeave:Connect(function()
+                if not SidebarDrag.Active then
+                    SetSidebarHighlight(false)
+                end
+            end)
+
+            Library:GiveSignal(SidebarGrabber.InputBegan:Connect(function(input)
+                if not Library.Toggled then
+                    return
+                end
+
+                if
+                    input.UserInputType ~= Enum.UserInputType.MouseButton1
+                    and input.UserInputType ~= Enum.UserInputType.Touch
+                then
+                    return
+                end
+
+                SidebarDrag.Active = true
+                SidebarDrag.StartWidth = GetSidebarWidth()
+                SidebarDrag.StartX = input.Position.X
+                SidebarDrag.TouchId = input.UserInputType == Enum.UserInputType.Touch and input or nil
+
+                SetSidebarHighlight(true)
+
+                local Connection
+                Connection = Library:GiveSignal(input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        SidebarDrag.Active = false
+                        SidebarDrag.TouchId = nil
+                        local IsOver = Library:MouseIsOverFrame(SidebarGrabber, Vector2.new(Mouse.X, Mouse.Y))
+                        SetSidebarHighlight(IsOver and Library.Toggled)
+                        if Connection then
+                            Connection:Disconnect()
+                        end
+                    end
+                end))
+            end))
+
+            Library:GiveSignal(UserInputService.InputChanged:Connect(function(input)
+                if not SidebarDrag.Active then
+                    return
+                end
+
+                if not Library.Toggled then
+                    SidebarDrag.Active = false
+                    SidebarDrag.TouchId = nil
+                    SetSidebarHighlight(false)
+                    return
+                end
+
+                if input.UserInputType == Enum.UserInputType.MouseMovement or input == SidebarDrag.TouchId then
+                    local Delta = input.Position.X - SidebarDrag.StartX
+                    SetSidebarWidth(SidebarDrag.StartWidth + Delta)
+                end
+            end))
+
+            Library:GiveSignal(UserInputService.InputEnded:Connect(function(input)
+                if not SidebarDrag.Active then
+                    return
+                end
+
+                if
+                    input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch
+                    or input == SidebarDrag.TouchId
+                then
+                    SidebarDrag.Active = false
+                    SidebarDrag.TouchId = nil
+                    local IsOver = Library:MouseIsOverFrame(SidebarGrabber, Vector2.new(Mouse.X, Mouse.Y))
+                    SetSidebarHighlight(IsOver and Library.Toggled)
+                end
+            end))
+
+            SetSidebarHighlight(false)
+        end
+
+        task.defer(function()
+            EnsureSidebarBounds()
+            ApplySidebarLayout()
+        end)
     end
 
     --// Window Table \\--
-    local Window = {}
+    Window = {}
+
+    -- Add sidebar methods if EnableSidebarResize is enabled
+    if WindowInfo.EnableSidebarResize then
+        function Window:GetSidebarWidth()
+            return GetSidebarWidth()
+        end
+
+        function Window:IsSidebarCompacted()
+            return LayoutState.IsCompact
+        end
+
+        function Window:SetSidebarWidth(Width)
+            SetSidebarWidth(Width)
+        end
+
+        function Window:SetCompact(State)
+            assert(typeof(State) == "boolean", "State must be a boolean")
+
+            local Threshold = LayoutState.MinWidth * LayoutState.CollapseThreshold
+            if State then
+                SetSidebarWidth(Threshold * 0.5)
+            else
+                SetSidebarWidth(LayoutState.LastExpandedWidth or LayoutState.CurrentWidth or LayoutState.MinWidth)
+            end
+        end
+
+        function Window:ApplyLayout()
+            ApplySidebarLayout()
+        end
+    end
 
     function Window:AddTab(...)
         local Name = nil
