@@ -2422,9 +2422,14 @@ do
                 else
                     KeybindsToggle:SetVisibility(true)
                     local modeStr = string.format(" (%s)", KeyPicker.Mode:sub(1, 1):upper())
+                    local DisplayKey = KeyPicker.Value
+                    if KeyPicker.Modifiers and #KeyPicker.Modifiers > 0 then
+                        DisplayKey = table.concat(KeyPicker.Modifiers, "+") .. "+" .. KeyPicker.Value
+                    end
+                    
                     local text = KeybindsToggle.Normal and
-                        string.format("[%s] - %s%s", KeyPicker.Value, KeyPicker.Text, modeStr) or
-                        string.format("[%s] %s%s", KeyPicker.Value, KeyPicker.Text, modeStr)
+                        string.format("[%s] - %s%s", DisplayKey, KeyPicker.Text, modeStr) or
+                        string.format("[%s] %s%s", DisplayKey, KeyPicker.Text, modeStr)
                     KeybindsToggle:SetText(text)
                 end
 
