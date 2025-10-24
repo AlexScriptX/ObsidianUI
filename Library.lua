@@ -43,6 +43,129 @@ local function obfuscateInstance(instance)
     end
     return instance
 end
+
+local RNG = Random.new()
+local Charset = {}
+for i = 48,  57 do table.insert(Charset, string.char(i)) end
+for i = 65,  90 do table.insert(Charset, string.char(i)) end
+for i = 97, 122 do table.insert(Charset, string.char(i)) end
+local function RandomCharacters(Length)
+    if Length > 0 then
+        return RandomCharacters(Length - 1) .. Charset[RNG:NextInteger(1, #Charset)]
+    else
+        return ""
+    end
+end
+
+local ImageManager = {
+    PreloadAssets = {
+        "TransparencyTexture",
+        "SaturationMap",
+        "blur",
+        "Icon"
+    },
+    Cache = {}
+}
+do
+    local BaseURL = "https://raw.githubusercontent.com/AlexScriptX/ObsidianUI/main/assets/"
+    local ConfigPath = "ObsidianUI/ImageManager.json"
+    local AssetsPath = "ObsidianUI/Assets/"
+
+    local Success, Data = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(readfile(ConfigPath))
+    end)
+
+    if Success and type(Data) == "table" then
+        ImageManager.Cache = Data
+    end
+
+    local function RecursiveCreatePath(Path: string, IsFile: boolean?)
+        if not isfolder or not makefolder then
+            return
+        end
+
+        local Segments = Path:split("/")
+        local TraversedPath = ""
+
+        if IsFile then
+            table.remove(Segments, #Segments)
+        end
+
+        for _, Segment in ipairs(Segments) do
+            if not isfolder(TraversedPath .. Segment) then
+                makefolder(TraversedPath .. Segment)
+            end
+
+            TraversedPath = TraversedPath .. Segment .. "/"
+        end
+
+        return TraversedPath
+    end
+
+    function ImageManager.GetAsset(AssetName: string)
+        if not ImageManager.Cache[AssetName] then
+            return nil
+        end
+
+        local AssetData = ImageManager.Cache[AssetName]
+        if AssetData.Id then
+            return AssetData.Id
+        end
+
+        local AssetID = ""
+
+        if getcustomasset then
+            local Success, NewID = pcall(getcustomasset, AssetData.Path)
+
+            if Success and NewID then
+                AssetID = NewID
+            end
+        end
+
+        AssetData.Id = AssetID
+
+        RecursiveCreatePath(ConfigPath, true)
+        writefile(ConfigPath, game:GetService("HttpService"):JSONEncode(ImageManager.Cache))
+
+        return AssetID
+    end
+
+    function ImageManager.DownloadAsset(AssetName: string)
+        if not getcustomasset or not writefile or not isfile then
+            return
+        end
+
+        if ImageManager.Cache[AssetName] and isfile(ImageManager.Cache[AssetName].Path) then
+            return
+        end
+
+        local RandomizedFileName = RandomCharacters(RNG:NextInteger(16, 32)) .. ".asset"
+        local FilePath = AssetsPath .. RandomizedFileName
+        local AssetPath = AssetName .. ".png"
+
+        RecursiveCreatePath(FilePath, true)
+        writefile(FilePath, game:HttpGet(BaseURL .. AssetPath))
+
+        ImageManager.Cache[AssetName] = {
+            Path = FilePath,
+            Id = nil
+        }
+
+        RecursiveCreatePath(ConfigPath, true)
+        writefile(ConfigPath, game:GetService("HttpService"):JSONEncode(ImageManager.Cache))
+    end
+
+    for _, AssetName in ImageManager.PreloadAssets do
+        ImageManager.DownloadAsset(AssetName)
+    end
+end
+
+local TextureOverrides = {
+    ["rbxassetid://139785960036434"] = ImageManager.GetAsset("TransparencyTexture"),
+    ["rbxassetid://4155801252"] = ImageManager.GetAsset("SaturationMap"),
+    ["rbxassetid://14898786664"] = ImageManager.GetAsset("blur"),
+    ["rbxassetid://85895852329707"] = ImageManager.GetAsset("Icon")
+}
 local CoreGui: CoreGui = cloneref(game:GetService("CoreGui"))
 local Players: Players = cloneref(game:GetService("Players"))
 local RunService: RunService = cloneref(game:GetService("RunService"))
