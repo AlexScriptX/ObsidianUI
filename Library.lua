@@ -1,4 +1,4 @@
--- Security and Anti-Detection Features
+-- Security and Undetectability Features
 local ThreadFix = setthreadidentity and true or false
 if ThreadFix then
     local success = pcall(function() 
@@ -45,9 +45,19 @@ local function obfuscateInstance(instance)
     return instance
 end
 
-local cloneref = (cloneref or clonereference or function(instance: any)
-    return instance
-end)
+-- Enhanced Random Character Generation System
+local RNG = Random.new()
+local Charset = {}
+for i = 48,  57 do table.insert(Charset, string.char(i)) end
+for i = 65,  90 do table.insert(Charset, string.char(i)) end
+for i = 97, 122 do table.insert(Charset, string.char(i)) end
+local function RandomCharacters(Length)
+    if Length > 0 then
+        return RandomCharacters(Length - 1) .. Charset[RNG:NextInteger(1, #Charset)]
+    else
+        return ""
+    end
+end
 local CoreGui: CoreGui = cloneref(game:GetService("CoreGui"))
 local Players: Players = cloneref(game:GetService("Players"))
 local RunService: RunService = cloneref(game:GetService("RunService"))
@@ -56,7 +66,6 @@ local UserInputService: UserInputService = cloneref(game:GetService("UserInputSe
 local TextService: TextService = cloneref(game:GetService("TextService"))
 local Teams: Teams = cloneref(game:GetService("Teams"))
 local TweenService: TweenService = cloneref(game:GetService("TweenService"))
-local Lighting: Lighting = cloneref(game:GetService("Lighting"))
 
 local getgenv = getgenv or function()
     return shared
@@ -65,20 +74,6 @@ local setclipboard = setclipboard or nil
 local protectgui = protectgui or (syn and syn.protect_gui) or function() end
 local gethui = gethui or function()
     return CoreGui
-end
-
--- Security enhancements
-local gc_protect = function(tbl)
-    pcall(function()
-        local meta = {
-            __mode = "k",
-            __metatable = randomString(16),
-            __index = function() return nil end,
-            __newindex = function() end
-        }
-        setmetatable(tbl, meta)
-    end)
-    return tbl
 end
 
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
@@ -124,11 +119,10 @@ local Library = {
     Options = Options,
 
     NotifySide = "Right",
-    ShowCustomCursor = false,
+    ShowCustomCursor = true,
     ForceCheckbox = false,
     ShowToggleFrameInKeybinds = true,
     NotifyOnError = false,
-    ShowButtonMobile = true,
 
     CantDragForced = false,
 
@@ -155,25 +149,57 @@ local Library = {
 
     Registry = {},
     DPIRegistry = {},
-    BlurEffect = nil,
 }
 
--- Protect the Library object
-gc_protect(Library)
-
--- Custom AssetManager with security
-local RNG = Random.new()
-local Charset = {}
-for i = 48,  57 do table.insert(Charset, string.char(i)) end
-for i = 65,  90 do table.insert(Charset, string.char(i)) end
-for i = 97, 122 do table.insert(Charset, string.char(i)) end
-local function RandomCharacters(Length)
-    if Length > 0 then
-        return RandomCharacters(Length - 1) .. Charset[RNG:NextInteger(1, #Charset)]
-    else
-        return ""
+-- Custom metatable for Library to handle blur and mobile properties
+local LibraryMetatable = {
+    __index = function(t, key)
+        if key == "ShowBlur" then
+            return _ShowBlur
+        elseif key == "BlurSize" then
+            return _BlurSize
+        elseif key == "ShowMobileLockButton" then
+            return _ShowMobileLockButton
+        end
+        return rawget(t, key)
+    end,
+    __newindex = function(t, key, value)
+        if key == "ShowBlur" then
+            local oldValue = _ShowBlur
+            _ShowBlur = value
+            
+            if not value and oldValue then
+                if BlurAnimationThread then
+                    pcall(function()
+                        task.cancel(BlurAnimationThread)
+                        BlurAnimationThread = nil
+                    end)
+                end
+                
+                if rawget(t, "BlurEffect") then
+                    rawget(t, "BlurEffect").Size = 0
+                end
+                rawset(t, "BlurEnabled", false)
+            end
+        elseif key == "BlurSize" then
+            _BlurSize = value
+            
+            if rawget(t, "BlurEffect") and rawget(t, "BlurEnabled") and _ShowBlur then
+                rawget(t, "BlurEffect").Size = value
+            end
+        elseif key == "ShowMobileLockButton" then
+            _ShowMobileLockButton = value
+            
+            if rawget(t, "MobileLockButton") then
+                rawget(t, "MobileLockButton").Button.Visible = value
+            end
+        else
+            rawset(t, key, value)
+        end
     end
-end
+}
+
+setmetatable(Library, LibraryMetatable)
 
 local AssetManager = {
     PreloadAssets = {
@@ -280,7 +306,7 @@ do
     end
 end
 
--- Asset Overrides for security
+-- Asset Override System for better compatibility
 local AssetOverrides = {
     ["rbxassetid://139785960036434"] = AssetManager.GetAsset("TransparencyTexture"),
     ["rbxassetid://4155801252"] = AssetManager.GetAsset("SaturationMap"),
@@ -304,6 +330,112 @@ else
     end)
     Library.IsMobile = (Library.DevicePlatform == Enum.Platform.Android or Library.DevicePlatform == Enum.Platform.IOS)
     Library.MinSize = Library.IsMobile and Vector2.new(480, 240) or Vector2.new(480, 360)
+end
+
+-- Blur and Mobile System Variables
+local BlurAnimationThread = nil
+local _ShowBlur = true
+local _BlurSize = 13
+local _ShowMobileLockButton = true
+
+-- Blur System Functions
+local function addBlur(parent)
+    local randomName = randomString(8)
+    local blur = Instance.new('ImageLabel')
+    blur.Name = randomName
+    blur.Size = UDim2.new(1, 89, 1, 52)
+    blur.Position = UDim2.fromOffset(-48, -31)
+    blur.BackgroundTransparency = 1
+    
+    blur.Image = AssetManager.GetAsset("blur")
+    blur.ScaleType = Enum.ScaleType.Slice
+    blur.SliceCenter = Rect.new(52, 31, 261, 502)
+    blur.ZIndex = 0
+    
+    -- Usar secureCall para evitar detección
+    secureCall(function()
+        blur.Parent = parent
+    end)
+
+    return blur
+end
+
+local function createBlurEffect()
+    if not Library.BlurEffect then
+        local success, blurEffect = pcall(function()
+            local effect = Instance.new("BlurEffect")
+            effect.Name = randomString(8)
+            effect.Size = 0
+            return effect
+        end)
+        
+        if success then
+            Library.BlurEffect = blurEffect
+            secureCall(function()
+                Library.BlurEffect.Parent = game:GetService("Lighting")
+            end)
+        end
+    end
+end
+
+local function animateBlur(enabled)
+    if not _ShowBlur then
+        return
+    end
+
+    if BlurAnimationThread then
+        pcall(function()
+            task.cancel(BlurAnimationThread)
+            BlurAnimationThread = nil
+        end)
+    end
+
+    Library.BlurEnabled = enabled
+
+    if not Library.BlurEffect then
+        createBlurEffect()
+    end
+
+    local baseIncrement = math.max(2, _BlurSize / 12)
+    
+    BlurAnimationThread = task.spawn(function()
+        if enabled then
+            local targetSize = _BlurSize
+
+            while Library.BlurEffect and Library.BlurEffect.Size < targetSize and Library.BlurEnabled do
+                pcall(function()
+                    local currentSize = Library.BlurEffect.Size
+                    local remaining = targetSize - currentSize
+                    local increment = math.min(baseIncrement, remaining)
+                    
+                    Library.BlurEffect.Size = currentSize + increment
+                    
+                    if Library.BlurEffect.Size >= targetSize then
+                        Library.BlurEffect.Size = targetSize
+                    end
+                end)
+                task.wait(0.03)
+                if not Library.BlurEffect or not Library.BlurEnabled then break end
+            end
+        else
+            while Library.BlurEffect and Library.BlurEffect.Size > 0 and not Library.BlurEnabled do
+                pcall(function()
+                    local currentSize = Library.BlurEffect.Size
+                    local remaining = currentSize
+                    local decrement = math.min(baseIncrement, remaining)
+                    
+                    Library.BlurEffect.Size = currentSize - decrement
+                    
+                    if Library.BlurEffect.Size <= 0 then
+                        Library.BlurEffect.Size = 0
+                    end
+                end)
+                task.wait(0.03)
+                if not Library.BlurEffect or Library.BlurEnabled then break end
+            end
+        end
+        BlurAnimationThread = nil
+    end)
 end
 
 local Templates = {
@@ -365,11 +497,14 @@ local Templates = {
         SearchbarSize = UDim2.fromScale(1, 1),
         CornerRadius = 4,
         NotifySide = "Right",
-        ShowCustomCursor = false,
+        ShowCustomCursor = true,
         Font = Enum.Font.Code,
         ToggleKeybind = Enum.KeyCode.RightControl,
         MobileButtonsSide = "Left",
         UnlockMouseWhileOpen = true,
+        ShowBlur = true,
+        BlurSize = 13,
+        ShowMobileLockButton = true,
         Compact = false,
         EnableSidebarResize = false,
         SidebarMinWidth = 180,
@@ -621,46 +756,6 @@ local function GetLighterColor(Color)
     return Color3.fromHSV(H, math.max(0, S - 0.1), math.min(1, V + 0.1))
 end
 
--- Blur functionality
-local function addBlur(parent)
-    local randomName = randomString(8)
-    local blur = Instance.new('ImageLabel')
-    blur.Name = randomName
-    blur.Size = UDim2.new(1, 89, 1, 52)
-    blur.Position = UDim2.fromOffset(-48, -31)
-    blur.BackgroundTransparency = 1
-    
-    blur.Image = AssetManager.GetAsset("blur")
-    blur.ScaleType = Enum.ScaleType.Slice
-    blur.SliceCenter = Rect.new(52, 31, 261, 502)
-    blur.ZIndex = 0
-    
-    -- Use secureCall to avoid detection
-    secureCall(function()
-        blur.Parent = parent
-    end)
-
-    return blur
-end
-
-local function createBlurEffect()
-    if not Library.BlurEffect then
-        local success, blurEffect = pcall(function()
-            local effect = Instance.new("BlurEffect")
-            effect.Name = randomString(8)
-            effect.Size = 0
-            return effect
-        end)
-        
-        if success then
-            Library.BlurEffect = blurEffect
-            secureCall(function()
-                Library.BlurEffect.Parent = Lighting
-            end)
-        end
-    end
-end
-
 function Library:UpdateKeybindFrame()
     if not Library.KeybindFrame then
         return
@@ -668,10 +763,6 @@ function Library:UpdateKeybindFrame()
 
     local XSize = 0
     for _, KeybindToggle in pairs(Library.KeybindToggles) do
-        -- Only show keybinds that have actual keys bound (not "None")
-        local hasBinding = KeybindToggle.Key and KeybindToggle.Key ~= "None" and KeybindToggle.Key ~= ""
-        KeybindToggle.Holder.Visible = hasBinding and KeybindToggle.Holder.Visible
-        
         if not KeybindToggle.Holder.Visible then
             continue
         end
@@ -1222,11 +1313,6 @@ local function FillInstance(Table: { [string]: any }, Instance: GuiObject)
             end
         end
 
-        -- Apply asset overrides for security
-        if k == "Image" and typeof(v) == "string" and AssetOverrides[v] then
-            v = AssetOverrides[v]
-        end
-
         Instance[k] = v
     end
 
@@ -1241,9 +1327,7 @@ local function FillInstance(Table: { [string]: any }, Instance: GuiObject)
 end
 
 local function New(ClassName: string, Properties: { [string]: any }): any
-    local Instance = secureCall(function()
-        return obfuscateInstance(Instance.new(ClassName))
-    end) or Instance.new(ClassName)
+    local Instance = Instance.new(ClassName)
 
     if Templates[ClassName] then
         FillInstance(Templates[ClassName], Instance)
@@ -1287,24 +1371,23 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
         return
     end
 
-    pcall(protectgui, UI)
-    SafeParentUI(UI, gethui)
+    secureCall(protectgui, UI)
+    secureCall(SafeParentUI, UI, gethui)
 end
 
 local ScreenGui = New("ScreenGui", {
-    Name = randomString(12),
+    Name = randomString(math.random(10, 18)),
     DisplayOrder = 999,
     ResetOnSpawn = false,
 })
-ParentUI(ScreenGui)
-Library.ScreenGui = ScreenGui
+secureCall(function()
+    ParentUI(ScreenGui)
+    Library.ScreenGui = obfuscateInstance(ScreenGui)
+end)
 ScreenGui.DescendantRemoving:Connect(function(Instance)
     Library:RemoveFromRegistry(Instance)
     Library.DPIRegistry[Instance] = nil
 end)
-
--- Initialize blur effect
-createBlurEffect()
 
 local ModalElement = New("TextButton", {
     BackgroundTransparency = 1,
@@ -1316,7 +1399,42 @@ local ModalElement = New("TextButton", {
     Parent = ScreenGui,
 })
 
---// Cursor removed for security
+--// Cursor
+local Cursor
+do
+    Cursor = New("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = "White",
+        Size = UDim2.fromOffset(9, 1),
+        Visible = false,
+        ZIndex = 999,
+        Parent = ScreenGui,
+    })
+    New("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = "Dark",
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.new(1, 2, 1, 2),
+        ZIndex = 998,
+        Parent = Cursor,
+    })
+
+    local CursorV = New("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = "White",
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.fromOffset(1, 9),
+        Parent = Cursor,
+    })
+    New("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = "Dark",
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.new(1, 2, 1, 2),
+        ZIndex = 998,
+        Parent = CursorV,
+    })
+end
 
 --// Notification
 local NotificationArea
@@ -1938,8 +2056,8 @@ function Library:AddTooltip(InfoStr: string, DisabledInfoStr: string, HoverInsta
             and not (CurrentMenu and Library:MouseIsOverFrame(CurrentMenu.Menu, Mouse))
         do
             TooltipLabel.Position = UDim2.fromOffset(
-                Mouse.X + 14,
-                Mouse.Y + 12
+                Mouse.X + (Library.ShowCustomCursor and 8 or 14),
+                Mouse.Y + (Library.ShowCustomCursor and 8 or 12)
             )
 
             RunService.RenderStepped:Wait()
@@ -2372,8 +2490,19 @@ do
                     KeybindsToggle:SetNormal(true)
                 end
 
-                KeybindsToggle:SetText(("[%s] %s (%s)"):format(KeyPicker.DisplayValue, KeyPicker.Text, KeyPicker.Mode))
-                KeybindsToggle:SetVisibility(true)
+                -- Only show keybinds that have a key assigned (not "None" or empty)
+                local showToggle = KeyPicker.Value ~= "None" and KeyPicker.Value ~= ""
+                if not showToggle then
+                    KeybindsToggle:SetVisibility(false)
+                else
+                    KeybindsToggle:SetVisibility(true)
+                    local modeStr = string.format(" (%s)", KeyPicker.Mode:sub(1, 1):upper())
+                    local text = KeybindsToggle.Normal and
+                        string.format("[%s] - %s%s", KeyPicker.Value, KeyPicker.Text, modeStr) or
+                        string.format("[%s] %s%s", KeyPicker.Value, KeyPicker.Text, modeStr)
+                    KeybindsToggle:SetText(text)
+                end
+
                 KeybindsToggle:Display(State)
             end
 
@@ -5598,6 +5727,18 @@ function Library:SetNotifySide(Side: string)
     end
 end
 
+function Library:SetShowBlur(Show: boolean)
+    Library.ShowBlur = Show
+end
+
+function Library:SetBlurSize(Size: number)
+    Library.BlurSize = Size
+end
+
+function Library:SetShowMobileLockButton(Show: boolean)
+    Library.ShowMobileLockButton = Show
+end
+
 function Library:Notify(...)
     local Data = {}
     local Info = select(1, ...)
@@ -5870,6 +6011,9 @@ function Library:CreateWindow(WindowInfo)
     Library.ShowCustomCursor = WindowInfo.ShowCustomCursor
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
+    Library.ShowBlur = WindowInfo.ShowBlur
+    Library.BlurSize = WindowInfo.BlurSize
+    Library.ShowMobileLockButton = WindowInfo.ShowMobileLockButton
 
     local IsDefaultSearchbarSize = WindowInfo.SearchbarSize == UDim2.fromScale(1, 1)
     local MainFrame
@@ -7484,12 +7628,30 @@ function Library:CreateWindow(WindowInfo)
 
         MainFrame.Visible = Library.Toggled
 
+        -- Handle blur animation
+        animateBlur(Library.Toggled)
+
         if WindowInfo.UnlockMouseWhileOpen then
             ModalElement.Modal = Library.Toggled
         end
 
         if Library.Toggled and not Library.IsMobile then
-            -- Cursor functionality removed for security
+            local OldMouseIconEnabled = UserInputService.MouseIconEnabled
+            pcall(function()
+                RunService:UnbindFromRenderStep("ShowCursor")
+            end)
+            RunService:BindToRenderStep("ShowCursor", Enum.RenderPriority.Last.Value, function()
+                UserInputService.MouseIconEnabled = not Library.ShowCustomCursor
+
+                Cursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y)
+                Cursor.Visible = Library.ShowCustomCursor
+
+                if not (Library.Toggled and ScreenGui and ScreenGui.Parent) then
+                    UserInputService.MouseIconEnabled = OldMouseIconEnabled
+                    Cursor.Visible = false
+                    RunService:UnbindFromRenderStep("ShowCursor")
+                end
+            end)
         elseif not Library.Toggled then
             SetSidebarHighlight(false)
             TooltipLabel.Visible = false
@@ -7517,6 +7679,9 @@ function Library:CreateWindow(WindowInfo)
             Library.CantDragForced = not Library.CantDragForced
             self:SetText(Library.CantDragForced and "Unlock" or "Lock")
         end)
+
+        Library.MobileLockButton = LockButton
+        Library.MobileLockButton.Button.Visible = Library.ShowMobileLockButton
 
         if WindowInfo.MobileButtonsSide == "Right" then
             ToggleButton.Button.Position = UDim2.new(1, -6, 0, 6)
@@ -7584,6 +7749,46 @@ Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange))
 
 Library:GiveSignal(Teams.ChildAdded:Connect(OnTeamChange))
 Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
+
+-- Security Enhancements for ScreenGui Protection and Environment Obfuscation
+if Library.ScreenGui then
+    secureCall(function()
+        Library.ScreenGui.Name = randomString(math.random(10, 18))
+        task.spawn(function()
+            while Library.ScreenGui and Library.ScreenGui.Parent do
+                task.wait(math.random(5, 15))
+                if Library.ScreenGui then
+                    Library.ScreenGui.Name = randomString(math.random(10, 18))
+                end
+            end
+        end)
+    end)
+end
+
+-- Environment Protection
+pcall(function()
+    if getfenv and setfenv then
+        local env = getfenv(0)
+        if env then
+            setfenv(0, setmetatable({}, {
+                __index = function(_, key)
+                    if key == "script" then
+                        return nil
+                    end
+                    return env[key]
+                end,
+                __metatable = randomString(16)
+            }))
+        end
+    end
+end)
+
+-- Library Object Protection - Add random properties to make detection harder
+secureCall(function()
+    for i = 1, math.random(3, 7) do
+        Library[randomString(math.random(6, 12))] = randomString(math.random(8, 16))
+    end
+end)
 
 getgenv().Library = Library
 return Library
