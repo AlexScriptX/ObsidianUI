@@ -262,6 +262,8 @@ local Library = {
     Buttons = Buttons,
     Toggles = Toggles,
     Options = Options,
+    
+    ImageManager = ImageManager,
 
     NotifySide = "Right",
     ForceCheckbox = false,
