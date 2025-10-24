@@ -1,4 +1,3 @@
--- huh
 local ThreadFix = setthreadidentity and true or false
 if ThreadFix then
     local success = pcall(function() 
@@ -2477,8 +2476,13 @@ do
                     KeybindsToggle:SetNormal(true)
                 end
 
-                KeybindsToggle:SetText(("[%s] %s (%s)"):format(KeyPicker.DisplayValue, KeyPicker.Text, KeyPicker.Mode))
-                KeybindsToggle:SetVisibility(true)
+                local showToggle = KeyPicker.Value ~= "None" and KeyPicker.Value ~= ""
+                if not showToggle then
+                    KeybindsToggle:SetVisibility(false)
+                else
+                    KeybindsToggle:SetText(("[%s] %s (%s)"):format(KeyPicker.DisplayValue, KeyPicker.Text, KeyPicker.Mode))
+                    KeybindsToggle:SetVisibility(true)
+                end
 
                 KeybindsToggle:Display(State)
             end
