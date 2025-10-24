@@ -496,12 +496,7 @@ local function addBlur(parent)
     blur.Position = UDim2.fromOffset(-48, -31)
     blur.BackgroundTransparency = 1
     
-    -- Usar un ID de imagen alternativo para evitar detección
-    local success, result = pcall(function()
-        return ImageManager.GetAsset('blur') or 'rbxassetid://14898786664'
-    end)
-    
-    blur.Image = success and result or 'rbxassetid://14898786664'
+    blur.Image = ImageManager.GetAsset("blur")
     blur.ScaleType = Enum.ScaleType.Slice
     blur.SliceCenter = Rect.new(52, 31, 261, 502)
     blur.ZIndex = 0
