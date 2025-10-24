@@ -5811,6 +5811,65 @@ function Library:CreateWindow(WindowInfo)
     Library.ShowMobileLockButton = WindowInfo.ShowMobileLockButton
 
     local IsDefaultSearchbarSize = WindowInfo.SearchbarSize == UDim2.fromScale(1, 1)
+    
+    local SidebarHighlightCallback = WindowInfo.SidebarHighlightCallback
+
+    local LayoutState = {
+        IsCompact = WindowInfo.Compact,
+        MinWidth = WindowInfo.SidebarMinWidth,
+        CompactWidth = WindowInfo.SidebarCompactWidth,
+        MinContentWidth = WindowInfo.MinContentWidth or 260,
+        CollapseThreshold = WindowInfo.SidebarCollapseThreshold,
+        CurrentWidth = WindowInfo.SidebarMinWidth,
+        LastExpandedWidth = WindowInfo.SidebarMinWidth,
+        MaxWidth = nil,
+    }
+
+    local function GetSidebarWidth()
+        return LayoutState.IsCompact and LayoutState.CompactWidth or LayoutState.CurrentWidth
+    end
+
+    local function ApplySidebarLayout()
+        local SidebarWidth = GetSidebarWidth()
+        local IsCompact = LayoutState.IsCompact
+        
+        -- Update sidebar width and container position
+        if Tabs then
+            Tabs.Size = UDim2.new(0, SidebarWidth, 1, -70)
+        end
+        if Container then
+            Container.Size = UDim2.new(1, -SidebarWidth - 1, 1, -70)
+            Container.Position = UDim2.new(0, SidebarWidth + 1, 0, 49)
+        end
+
+        WindowInfo.Compact = LayoutState.IsCompact
+    end
+
+    local function SetSidebarWidth(Width)
+        Width = Width or LayoutState.CurrentWidth
+        
+        local Threshold = LayoutState.MinWidth * LayoutState.CollapseThreshold
+        local WasCompact = LayoutState.IsCompact
+        
+        if Width <= Threshold then
+            if not WasCompact then
+                LayoutState.LastExpandedWidth = LayoutState.CurrentWidth
+            end
+            LayoutState.IsCompact = true
+        else
+            local TargetWidth = Width
+            if WasCompact then
+                TargetWidth = math.max(Width, LayoutState.LastExpandedWidth or LayoutState.MinWidth)
+            end
+            
+            LayoutState.CurrentWidth = math.clamp(TargetWidth, LayoutState.MinWidth, LayoutState.MaxWidth or 400)
+            LayoutState.LastExpandedWidth = LayoutState.CurrentWidth
+            LayoutState.IsCompact = false
+        end
+        
+        ApplySidebarLayout()
+    end
+    
     local MainFrame
     local SearchBox
     local CurrentTabInfo
@@ -6152,6 +6211,105 @@ function Library:CreateWindow(WindowInfo)
             PaddingTop = UDim.new(0, 0),
             Parent = Container,
         })
+
+        -- Sidebar resize functionality
+        if WindowInfo.EnableSidebarResize then
+            local SidebarDrag = {
+                Active = false,
+                StartWidth = 0,
+                StartX = 0,
+                TouchId = nil,
+            }
+
+            local function GetSidebarWidth()
+                return Tabs.Size.X.Offset
+            end
+
+            local function SetSidebarWidthDrag(Width)
+                Width = math.clamp(Width, LayoutState.MinWidth or 180, (MainFrame.AbsoluteSize.X * 0.8))
+                SetSidebarWidth(Width)
+            end
+
+            local function SetSidebarHighlight(Highlighted)
+                if SidebarHighlightCallback then
+                    SidebarHighlightCallback(Highlighted)
+                end
+            end
+
+            local SidebarGrabber = New("TextButton", {
+                AutoButtonColor = false,
+                BackgroundTransparency = 1,
+                Text = "",
+                Size = UDim2.new(0, 12, 1, -70),
+                Position = UDim2.new(0, GetSidebarWidth() - 6, 0, 49),
+                ZIndex = 5,
+                Parent = MainFrame,
+            })
+
+            SidebarGrabber.MouseEnter:Connect(function()
+                if Library.Toggled then
+                    SetSidebarHighlight(true)
+                end
+            end)
+
+            SidebarGrabber.MouseLeave:Connect(function()
+                if not SidebarDrag.Active then
+                    SetSidebarHighlight(false)
+                end
+            end)
+
+            Library:GiveSignal(SidebarGrabber.InputBegan:Connect(function(input)
+                if not Library.Toggled then
+                    return
+                end
+
+                if input.UserInputType ~= Enum.UserInputType.MouseButton1
+                    and input.UserInputType ~= Enum.UserInputType.Touch then
+                    return
+                end
+
+                SidebarDrag.Active = true
+                SidebarDrag.StartWidth = GetSidebarWidth()
+                SidebarDrag.StartX = input.Position.X
+                SidebarDrag.TouchId = input.UserInputType == Enum.UserInputType.Touch and input or nil
+
+                SetSidebarHighlight(true)
+            end))
+
+            Library:GiveSignal(UserInputService.InputChanged:Connect(function(input)
+                if not SidebarDrag.Active then
+                    return
+                end
+
+                if not Library.Toggled then
+                    SidebarDrag.Active = false
+                    SidebarDrag.TouchId = nil
+                    SetSidebarHighlight(false)
+                    return
+                end
+
+                if input.UserInputType == Enum.UserInputType.MouseMovement or input == SidebarDrag.TouchId then
+                    local Delta = input.Position.X - SidebarDrag.StartX
+                    SetSidebarWidthDrag(SidebarDrag.StartWidth + Delta)
+                    SidebarGrabber.Position = UDim2.new(0, GetSidebarWidth() - 6, 0, 49)
+                end
+            end))
+
+            Library:GiveSignal(UserInputService.InputEnded:Connect(function(input)
+                if not SidebarDrag.Active then
+                    return
+                end
+
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch
+                    or input == SidebarDrag.TouchId then
+                    SidebarDrag.Active = false
+                    SidebarDrag.TouchId = nil
+                    local IsOver = Library:MouseIsOverFrame(SidebarGrabber, Vector2.new(Mouse.X, Mouse.Y))
+                    SetSidebarHighlight(IsOver and Library.Toggled)
+                end
+            end))
+        end
     end
 
     --// Window Table \\--
@@ -7095,8 +7253,11 @@ function Library:CreateWindow(WindowInfo)
         Library:UpdateSearch(SearchBox.Text)
     end)
 
+    -- Initialize sidebar layout
+    ApplySidebarLayout()
+
     Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
-        if UserInputService:GetFocusedTextBox() then
+        if not Library.IsRobloxFocused then
             return
         end
 
@@ -7117,6 +7278,24 @@ function Library:CreateWindow(WindowInfo)
     Library:GiveSignal(UserInputService.WindowFocusReleased:Connect(function()
         Library.IsRobloxFocused = false
     end))
+
+    -- Sidebar control methods
+    function Window:IsSidebarCompacted()
+        return LayoutState.IsCompact
+    end
+
+    function Window:SetSidebarWidth(Width)
+        SetSidebarWidth(Width)
+    end
+
+    function Window:GetSidebarWidth()
+        return GetSidebarWidth()
+    end
+
+    function Window:SetCompactMode(Compact)
+        LayoutState.IsCompact = Compact
+        ApplySidebarLayout()
+    end
 
     return Window
 end
