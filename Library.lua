@@ -7297,6 +7297,21 @@ function Library:CreateWindow(WindowInfo)
         ApplySidebarLayout()
     end
 
+    function Window:SetCompact(State)
+        assert(typeof(State) == "boolean", "State must be a boolean")
+
+        local Threshold = LayoutState.MinWidth * LayoutState.CollapseThreshold
+        if State then
+            SetSidebarWidth(Threshold * 0.5)
+        else
+            SetSidebarWidth(LayoutState.LastExpandedWidth or LayoutState.CurrentWidth or LayoutState.MinWidth)
+        end
+    end
+
+    function Window:ApplyLayout()
+        ApplySidebarLayout()
+    end
+
     return Window
 end
 
