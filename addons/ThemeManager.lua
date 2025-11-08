@@ -45,7 +45,7 @@ do
         ["Default"] = {
             1,
             httpService:JSONDecode(
-                [[{"FontColor":"ffe6ab","MainColor":"31173e","AccentColor":"f1782e","BackgroundColor":"160534","OutlineColor":"460062"}]]
+                [[{"FontColor":"ffe6ab","MainColor":"3b164e","AccentColor":"f1782e","BackgroundColor":"160534","OutlineColor":"460062"}]]
             ),
         },
         ["Mspaint"] = {
