@@ -45,7 +45,7 @@ do
         ["Default"] = {
             1,
             httpService:JSONDecode(
-                [[{"FontColor":"ffe6ab","MainColor":"3b164e","AccentColor":"f1782e","BackgroundColor":"160534","OutlineColor":"460062"}]]
+                [[{"FontColor":"ffffff","MainColor":"191919","AccentColor":"a2a2a2","BackgroundColor":"000000","OutlineColor":"282828"}]]
             ),
         },
         ["Mspaint"] = {
@@ -621,8 +621,8 @@ do
             FinalTheme["FontFace"] = theme["FontFace"]
             LibraryScheme["Font"] = Font.fromEnum(Enum.Font[theme["FontFace"]])
         else
-            FinalTheme["FontFace"] = "Fantasy"
-            LibraryScheme["Font"] = Font.fromEnum(Enum.Font.Fantasy)
+            FinalTheme["FontFace"] = "Gotham"
+            LibraryScheme["Font"] = Font.fromEnum(Enum.Font.Gotham)
         end
 
         for _, field in pairs({ "Red", "Dark", "White" }) do
@@ -709,7 +709,7 @@ do
         groupbox:AddLabel("Font color"):AddColorPicker("FontColor", { Default = self.Library.Scheme.FontColor })
         groupbox:AddDropdown("FontFace", {
             Text = "Font Face",
-            Default = "Fantasy",
+            Default = "Gotham",
             Values = { "BuilderSans", "Code", "Fantasy", "Gotham", "Jura", "Roboto", "RobotoMono", "SourceSans" },
         })
 
