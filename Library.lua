@@ -303,7 +303,7 @@ local AssetOverrides = {
     ["rbxassetid://139785960036434"] = AssetManager.GetAsset("TransparencyTexture"),
     ["rbxassetid://4155801252"] = AssetManager.GetAsset("SaturationMap"),
     ["rbxassetid://14898786664"] = AssetManager.GetAsset("blur"),
-    ["rbxassetid://85895852329707"] = AssetManager.GetAsset("Icon"),
+    ["rbxassetid://116887773683131"] = AssetManager.GetAsset("Icon"),
     ["rbxassetid://18886652611"] = AssetManager.GetAsset("Normal"),
     ["rbxassetid://87519554692663"] = AssetManager.GetAsset("Error")
 }
